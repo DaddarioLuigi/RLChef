@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RL Chef — Tabular vs Linear FA & State Representation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+      svg: { fontCache: 'global' }
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --slide-bg: #ffffff;
+      --text: #1e293b;
+      --text-soft: #475569;
+      --accent: #0ea5e9;
+      --accent-dark: #0284c7;
+      --accent2: #6366f1;
+      --success: #059669;
+      --warning: #d97706;
+      --border: #e2e8f0;
+      --shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+      --shadow-strong: 0 8px 40px rgba(15, 23, 42, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'DM Sans', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .deck { position: relative; width: 100vw; height: 100vh; background: var(--slide-bg); }
+    .slide { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 2rem 3rem; }
+    .slide.active { display: flex; animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .slide-inner {
+      max-width: 1100px; width: 100%; overflow: auto; padding: 0;
+      position: relative;
+    }
+    .slide h1 { margin: 0 0 0.4rem; font-size: 2.2rem; color: var(--accent-dark); font-weight: 700; letter-spacing: -0.02em; }
+    .slide h2 { margin: 1.2rem 0 0.45rem; font-size: 1.3rem; color: var(--accent2); font-weight: 600; }
+    .slide p, .slide li { margin: 0.4rem 0; line-height: 1.55; color: var(--text); font-size: 1.1rem; }
+    .slide ul { margin: 0.6rem 0; padding-left: 1.5rem; }
+    .slide code { font-family: 'JetBrains Mono', monospace; font-size: 0.98em; background: var(--bg); padding: 0.2em 0.45em; border-radius: 4px; color: var(--accent2); }
+    .slide .formula { margin: 0.85rem 0; padding: 0.85rem 1.1rem; background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-radius: 10px; border-left: 4px solid var(--accent); text-align: center; overflow-x: auto; }
+    .slide .formula .MathJax { font-size: 1.2rem !important; }
+    .slide .note { font-size: 0.98rem; color: var(--text-soft); font-style: italic; margin-top: 0.45rem; }
+    .slide img { max-width: 100%; height: auto; border-radius: 10px; margin: 0.7rem 0; box-shadow: var(--shadow); border: 1px solid var(--border); }
+    .slide .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.75rem; align-items: start; }
+    .slide .two-col img { margin: 0.3rem 0; }
+    .slide .metrics { display: flex; gap: 1.1rem; flex-wrap: wrap; margin: 1rem 0; }
+    .slide .metric { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); color: var(--success); padding: 0.6rem 1.1rem; border-radius: 10px; font-weight: 600; font-size: 1.05rem; border: 1px solid rgba(5,150,105,0.2); }
+    .slide .metric.linear { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); color: var(--warning); border-color: rgba(217,119,6,0.2); }
+    .title-block { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; margin-bottom: 1.5rem; }
+    .title-block .logo { height: 64px; width: auto; object-fit: contain; }
+    .title-block .meta { text-align: right; }
+    .title-block .meta .name { font-weight: 600; font-size: 1.1rem; color: var(--text); }
+    .title-block .meta .matricola { font-size: 1rem; color: var(--text-soft); }
+    .interpret { margin: 0.85rem 0; padding: 0.7rem 1.1rem; background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%); border-left: 4px solid var(--accent2); border-radius: 0 8px 8px 0; font-size: 1rem; color: var(--text); line-height: 1.5; }
+    .interpret strong { color: var(--accent2); }
+    .nav-hint { position: fixed; bottom: 1rem; right: 1.5rem; font-size: 0.8rem; color: var(--text-soft); background: var(--slide-bg); padding: 0.35rem 0.6rem; border-radius: 6px; box-shadow: var(--shadow); }
+    .progress { position: fixed; bottom: 1rem; left: 1.5rem; font-size: 0.85rem; color: var(--text-soft); font-weight: 500; background: var(--slide-bg); padding: 0.35rem 0.65rem; border-radius: 6px; box-shadow: var(--shadow); }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <!-- Slide 1: Title -->
+    <section class="slide active" data-slide="1">
+      <div class="slide-inner">
+        <div class="title-block">
+          <img src="logo-unimib.png" alt="UniMiB" class="logo">
+          <div class="meta">
+            <div class="name">Luigi Daddario</div>
+            <div class="matricola">Matricola 908294 — UniMiB</div>
+          </div>
+        </div>
+        <h1>RL Chef: Tabular RL vs Linear Function Approximation</h1>
+        <p style="font-size: 1.05rem; margin-top: 0.25rem; color: var(--text-soft);">How state representation (simple vs mask) affects learning</p>
+        <p style="margin-top: 1.25rem;">We built a small game (<strong>RL Chef</strong>): an agent moves on a 5×5 grid, collects ingredients (each cell can be used only once), and chooses <strong>when to cook</strong> to maximise reward. We compare two learning methods—<strong>tabular Q-learning</strong> (a table of values) and <strong>linear function approximation</strong> (a learned function)—and study how the way we describe the state (simple vs mask) changes how well the agent learns.</p>
+        <div class="interpret"><strong>Why this setup:</strong> In small, discrete worlds, tabular methods are well understood and often converge. Comparing them with linear approximation shows the cost of approximating values and how important a good state description is.</div>
+      </div>
+    </section>
+
+    <!-- Slide 2: Objectives -->
+    <section class="slide" data-slide="2">
+      <div class="slide-inner">
+        <h1>Objectives</h1>
+        <ul>
+          <li>Define the cooking task as an MDP and implement it in <strong>Gymnasium</strong>.</li>
+          <li>Implement and compare: <strong>tabular Q-learning</strong> (and optionally SARSA) and <strong>linear Q-approximation</strong> (value function learned from experience).</li>
+          <li>Study how <strong>state representation</strong> affects learning: <code>simple</code> (position + inventory only) vs <code>mask</code> (adds which cells are already empty).</li>
+          <li>Report <strong>reproducible</strong> results over many runs: learning curves, final performance, and interpretable metrics (waste, incompatible ingredients).</li>
+        </ul>
+        <div class="interpret"><strong>In plain words:</strong> Simple and mask use the same game rules but describe the “state” differently. Simple ignores which cells are empty; mask includes that. In theory, mask is more complete (Markov); in practice, it also makes the state space much bigger, so learning can be slower.</div>
+      </div>
+    </section>
+
+    <!-- Slide 3: Environment (MDP) -->
+    <section class="slide" data-slide="3">
+      <div class="slide-inner">
+        <h1>Environment (MDP)</h1>
+        <ul>
+          <li><strong>Grid</strong> 5×5; each cell has one ingredient type (tomato, cheese, pasta, basil, fish).</li>
+          <li>Each ingredient can be picked <strong>at most once per episode</strong> (once a cell is used, it is empty).</li>
+          <li><strong>5 actions:</strong> move up, down, left, or right; or <code>cook</code>. Choosing <code>cook</code> ends the episode: the agent gets a reward from the best recipe it can make with its inventory, minus penalties for waste and bad combinations.</li>
+        </ul>
+        <p class="note">The hard part: deciding <strong>when</strong> to stop collecting and cook (exploration vs exploitation).</p>
+        <div class="interpret"><strong>In plain words:</strong> The agent must balance “collect more” (more options, but more steps and risk of waste) vs “cook now” (immediate reward). That makes the task interesting for comparing different learning methods.</div>
+      </div>
+    </section>
+
+    <!-- Slide 4: Environment layout (fixed grid) -->
+    <section class="slide" data-slide="4">
+      <div class="slide-inner">
+        <h1>Environment layout (fixed grid)</h1>
+        <p>The 5×5 grid used in all experiments. Each cell shows the ingredient id and a short name. The layout is <strong>fixed</strong> (same every episode) so results are reproducible.</p>
+        <img src="results/rlchef/env_layout.png" alt="Env layout" style="max-height: 400px;">
+        <div class="interpret"><strong>Why a fixed layout?</strong> With a fixed grid, knowing “which cells are empty” (the mask) fully describes what can still be collected—so the state is Markov. With random layouts, the same idea would need a different (or more complex) state description.</div>
+      </div>
+    </section>
+
+    <!-- Slide 5: Reward & task rules -->
+    <section class="slide" data-slide="5">
+      <div class="slide-inner">
+        <h1>Reward & task rules</h1>
+        <ul>
+          <li><strong>Moving</strong>: small cost per step.</li>
+          <li><strong>Collecting</strong> an ingredient: small positive reward.</li>
+          <li><strong>Cooking</strong>: the game picks the best recipe the agent can make. Reward = recipe value − penalties for <em>waste</em> (unused ingredients) and <em>incompatible</em> pairs (e.g. pasta + fish). If no valid recipe: fail penalty (worse if inventory is empty).</li>
+        </ul>
+        <div class="formula">\[ R = r_{\mathrm{pickup}} - r_{\mathrm{move}} + \text{cook}\bigl(\text{value} - \text{waste} - \text{incompat}\bigr) \]</div>
+        <div class="interpret"><strong>In plain words:</strong> Most of the reward comes at the end (when cooking). The penalties tell us how “clean” the policy is: high waste or incompat means the agent collected poorly; we can measure these separately from total return.</div>
+      </div>
+    </section>
+
+    <!-- Slide 6: Recipes & interpretability -->
+    <section class="slide" data-slide="6">
+      <div class="slide-inner">
+        <h1>Recipes & interpretability</h1>
+        <p><strong>Ingredients:</strong> tomato, cheese, pasta, basil, fish.</p>
+        <p><strong>Recipes:</strong> e.g. margherita, pasta al pomodoro, cheesy pasta, fish special (each needs a specific set of ingredients and has a value).</p>
+        <p><strong>Rule:</strong> pasta + fish together are penalised (incompatible).</p>
+        <h2>Metrics we report (besides return)</h2>
+        <ul>
+          <li><strong>Waste:</strong> number of ingredients collected but not used in the recipe that was cooked.</li>
+          <li><strong>Incompat:</strong> how many incompatible pairs were in the inventory when cooking.</li>
+        </ul>
+        <div class="interpret"><strong>Why these?</strong> Total return alone does not tell us <em>why</em> a policy is bad. High waste means the agent over-collected or chose the wrong recipe; high incompat means it ignored the pasta–fish rule. These metrics make the comparison clearer.</div>
+      </div>
+    </section>
+
+    <!-- Slide 7: State — simple vs mask -->
+    <section class="slide" data-slide="7">
+      <div class="slide-inner">
+        <h1>State representation: simple vs mask</h1>
+        <p>For <strong>tabular</strong> methods, we need a discrete “state key” to index the Q-table. We compare two choices:</p>
+        <h2><code>simple</code> (incomplete on purpose)</h2>
+        <ul>
+          <li>State = <strong>position + inventory</strong> (how many of each ingredient we have).</li>
+          <li>Does <strong>not</strong> record which cells are already empty.</li>
+          <li>So the same (position, inventory) can correspond to different “real” situations (different cells empty) → not fully Markov.</li>
+        </ul>
+        <h2><code>mask</code> (full information, Markov)</h2>
+        <ul>
+          <li>State = <strong>position + inventory + a mask</strong> of which cells have been visited/emptied.</li>
+          <li>With a fixed grid, this fully describes what is left to collect → Markov.</li>
+          <li>But the number of possible states grows (e.g. \(2^{25}\) patterns for the grid), so tabular learning needs more experience to fill the table.</li>
+        </ul>
+        <div class="interpret"><strong>In plain words:</strong> Simple is easier to learn from (fewer states) but misses information. Mask is complete but makes the state space huge, so in a limited training budget it may not do better than simple.</div>
+      </div>
+    </section>
+
+    <!-- Slide 8: Observation for linear agent -->
+    <section class="slide" data-slide="8">
+      <div class="slide-inner">
+        <h1>Observation (input to the linear agent)</h1>
+        <p>The <strong>linear</strong> agent does not use a state key; it gets a <strong>feature vector</strong> \(\phi(s)\) (normalised numbers), e.g.:</p>
+        <ul>
+          <li>Position; which ingredient is in the current cell; whether that cell is still available; inventory (normalised); how much of each ingredient is still on the grid. (In the budget variant we add budget and round.)</li>
+        </ul>
+        <p class="note">In our code, <code>simple</code> vs <code>mask</code> changes only the <strong>tabular</strong> state key. The feature vector \(\phi(s)\) is the same for both ⇒ the linear agent gets the same input in both cases, so linear simple and linear mask behave identically.</p>
+        <div class="interpret"><strong>In plain words:</strong> The linear agent never sees “which cells are empty” in its features, so it cannot tell those situations apart. To improve the linear agent we would need to add that information (e.g. a mask or memory) to the features, not just change the tabular key.</div>
+      </div>
+    </section>
+
+    <!-- Slide 9: Agents -->
+    <section class="slide" data-slide="9">
+      <div class="slide-inner">
+        <h1>Agents</h1>
+        <h2>Tabular Q-learning</h2>
+        <p>We store a Q-value for each (state, action). Exploration: \(\varepsilon\)-greedy (random action with probability \(\varepsilon\)). Update: temporal-difference (TD) step using the best Q-value in the next state.</p>
+        <div class="formula">\[ Q(s,a) \leftarrow Q(s,a) + \alpha \Bigl[ r + \gamma \max_{a'} Q(s',a') - Q(s,a) \Bigr] \]</div>
+        <h2>Linear Q-approximation</h2>
+        <p>We approximate Q as a linear function of the feature vector: \(Q(s,a) = w_a^\top \phi(s) + b_a\). Same TD idea, but we update the weights \(w_a\) and bias \(b_a\) using the TD error. (L2 regularisation is available in the code but set to 0 here.)</p>
+        <div class="formula">\[ w_a \leftarrow w_a + \alpha\, (\text{TD error})\,\phi(s); \qquad b_a \leftarrow b_a + \alpha\, (\text{TD error}) \]</div>
+        <div class="interpret"><strong>In plain words:</strong> Tabular Q-learning has strong convergence guarantees in small spaces. Linear TD is more fragile: it does not minimise a single loss and can be sensitive to initialisation and exploration, which matches the high variance we see.</div>
+      </div>
+    </section>
+
+    <!-- Slide 10: Experimental setup -->
+    <section class="slide" data-slide="10">
+      <div class="slide-inner">
+        <h1>Experimental setup</h1>
+        <ul>
+          <li><strong>4 setups:</strong> Q-learning with <code>simple</code>; Q-learning with <code>mask</code>; linear with <code>simple</code>; linear with <code>mask</code>.</li>
+          <li><strong>Environment:</strong> <strong>base</strong> variant (no budget; one round per episode). The paper also reports a <strong>budget</strong> variant (ingredients cost money; cooking gives revenue)—harder.</li>
+          <li><strong>10 random seeds</strong> per setup. <strong>Training:</strong> 20,000 episodes; exploration \(\varepsilon\) decays from 0.3 to 0.05 over the first 3,000 episodes. <strong>Evaluation:</strong> no exploration (\(\varepsilon=0\)), 1,000 episodes per run.</li>
+          <li>No external data: all experience comes from playing the game. We report learning curves (smoothed over 200 episodes), mean ± std over seeds, and simple “sample-efficiency” measures (average return over training; return in the last episodes).</li>
+        </ul>
+        <p class="note">To reproduce: <code>python -m rlchef.experiments --variant base</code> then <code>python -m rlchef.analyze</code>. Results in <code>results/rlchef/</code>. For budget: <code>--variant budget</code> → <code>results/rlchef_budget/</code>.</p>
+        <div class="interpret"><strong>Why 10 seeds?</strong> Both methods depend on random exploration and updates. Averaging over seeds (and reporting std) gives a clearer picture of stability and variance than a single run.</div>
+      </div>
+    </section>
+
+    <!-- Slide 11: Main results (numbers) -->
+    <section class="slide" data-slide="11">
+      <div class="slide-inner">
+        <h1>Main results (evaluation return)</h1>
+        <p>Average total reward when we run the learned policy with no exploration (1,000 episodes per run, mean ± std over 10 seeds):</p>
+        <div class="metrics">
+          <span class="metric">Q-learning simple: 3.307 ± 0.104</span>
+          <span class="metric">Q-learning mask: 3.177 ± 0.079</span>
+          <span class="metric linear">Linear (simple=mask): 1.652 ± 0.718</span>
+        </div>
+        <p><strong>Takeaway:</strong> Tabular methods reach high return with low variance. The linear agent has lower average return and much higher variance across seeds.</p>
+        <img src="results/rlchef/eval_return_boxplot.png" alt="Eval return boxplot" style="max-height: 280px;">
+        <div class="interpret"><strong>Reading the boxplot:</strong> Each box is one setup; height shows spread across seeds. Tabular (simple and mask) have narrow boxes and high medians. Linear has a wide spread and lower median—so performance depends a lot on the random seed, and on average it is worse than tabular.</div>
+      </div>
+    </section>
+
+    <!-- Slide 12: Learning curves & policy efficiency -->
+    <section class="slide" data-slide="12">
+      <div class="slide-inner">
+        <h1>Learning curves & policy efficiency</h1>
+        <p>Tabular methods reach a stable performance in a few thousand episodes; <code>mask</code> does not beat <code>simple</code> here (bigger state space can slow learning). <strong>Episode length:</strong> tabular policies use ≈4 steps on average (collect a little, then cook); linear uses ≈25 steps (more wandering, more waste).</p>
+        <div class="two-col">
+          <div>
+            <p><strong>Learning curves (train return)</strong></p>
+            <img src="results/rlchef/returns_aggregate.png" alt="Returns aggregate">
+            <div class="interpret"><strong>Left (tabular):</strong> fast convergence to a plateau, low variance. <strong>Right (linear):</strong> slower rise, more variance. So tabular is both more sample-efficient and more stable.</div>
+          </div>
+          <div>
+            <p><strong>Episode length (steps) in evaluation</strong></p>
+            <img src="results/rlchef/steps_bars.png" alt="Steps bars">
+            <div class="interpret">Short episodes (≈4) for tabular: the policy “grabs a few good ingredients and cooks.” Long episodes (≈25) for linear: the agent wanders more and wastes more (waste 2.18±1.41), which matches the lower return.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 13: Trade-off & sample efficiency -->
+    <section class="slide" data-slide="13">
+      <div class="slide-inner">
+        <h1>Trade-off & sample-efficiency</h1>
+        <p><strong>Left:</strong> each point = one seed; x = total penalties (waste + incompat), y = evaluation return. <strong>Right:</strong> two simple measures from the training curve—average return over all episodes (“AUC”) and average return in the last episodes (“last”).</p>
+        <div class="two-col">
+          <div>
+            <img src="results/rlchef/tradeoff_scatter.png" alt="Trade-off scatter">
+            <div class="interpret">Tabular runs sit in the “high return, low penalties” corner. Linear runs are more spread out and often have higher penalties and lower return. So tabular wins on both dimensions: better return and fewer penalties.</div>
+          </div>
+          <div>
+            <img src="results/rlchef/sample_efficiency.png" alt="Sample efficiency">
+            <div class="interpret">Tabular scores higher on both AUC and “last”: it learns faster and reaches a better final level. Linear is lower on both—slower and less stable learning.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 14: Diagnostics & conclusions -->
+    <section class="slide" data-slide="14">
+      <div class="slide-inner">
+        <h1>Diagnostics & conclusions</h1>
+        <div class="two-col">
+          <div>
+            <p><strong>Waste & incompatibility (eval)</strong></p>
+            <img src="results/rlchef/waste_incompat_bars.png" alt="Waste incompat">
+            <div class="interpret">Tabular keeps waste low (it collects in a targeted way). Linear has much higher waste on average—more ingredients picked but not used. Incompat is small for both; the main problem for linear is inefficient collection.</div>
+          </div>
+          <div>
+            <p><strong>Which dishes are produced?</strong></p>
+            <img src="results/rlchef/made_distribution.png" alt="Made distribution">
+            <div class="interpret">Tabular produces a more varied set of recipes. Linear fails more often (no valid recipe) and concentrates on fewer outcomes—consistent with less coherent value estimates and more “confused” behaviour when deciding to cook.</div>
+          </div>
+        </div>
+        <h2>Conclusions</h2>
+        <ul>
+          <li>In this small discrete setting, <strong>tabular Q-learning</strong> is both sample-efficient and stable. The <strong>linear agent</strong> is sensitive to features, exploration, and reward design, and has high variance across seeds.</li>
+          <li><code>simple</code> vs <code>mask</code> only changes the tabular state key; the linear agent gets the same features in both cases, so its results are identical. For tabular, “mask” (Markov) enlarges the state space and in our budget does not beat “simple.”</li>
+          <li>In the <strong>budget variant</strong> (paper), the task is harder: tabular still gets low but stable positive return; the linear agent collapses to constant failure (\(-1.2\)).</li>
+          <li><strong>Limitations:</strong> we did not do extensive hyperparameter tuning; the linear approximator is simple. <strong>Future work:</strong> add the visited-cells mask (or memory) to the linear agent’s features; try random grid layouts; try SARSA, eligibility traces, or more stable TD methods.</li>
+        </ul>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="progress"><span id="current">1</span> / <span id="total">14</span></div>
+  <div class="nav-hint">← → arrow keys or click edges</div>
+
+  <script>
+    const slides = document.querySelectorAll('.slide');
+    const total = slides.length;
+    let idx = 0;
+
+    function go(n) {
+      slides[idx].classList.remove('active');
+      idx = (idx + n + total) % total;
+      slides[idx].classList.add('active');
+      document.getElementById('current').textContent = idx + 1;
+    }
+
+    document.getElementById('total').textContent = total;
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(1); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    });
+
+    document.querySelector('.deck').addEventListener('click', (e) => {
+      if (e.clientX > window.innerWidth * 0.7) go(1);
+      if (e.clientX < window.innerWidth * 0.3) go(-1);
+    });
+  </script>
+</body>
+</html>
