@@ -33,3 +33,4 @@ env/
 *.pem
 .__pycache__
 *.pyc
+RL_paper.tex
